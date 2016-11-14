@@ -14,11 +14,11 @@
             [serf.client :refer [make-client send-command!]]))
 
 (defn db
-  "Serf DB for a particular version."
-  [version]
+  "Serf service"
+  []
   (reify db/DB
     (setup! [_ test node]
-      (info node "Starting Serf" version)
+      (info node "Starting Serf")
       (c/exec :service :serf :start))
     (teardown! [_ test node]
       (info node "Tearing down Serf")
@@ -74,25 +74,25 @@
 
 
 (defn serf-test
- "Basic test with 10events per sec and no nemesis for 60sec"
-  [version]
+ "Basic test with 10events per sec and no nemesis"
+  [duration]
   (assoc tests/noop-test
          :name "Serf"
          :os debian/os
-         :db (db version)
+         :db (db)
          :client (client nil)
          :generator (->> s
                          (gen/stagger 1/10)
                          (gen/clients)
-                         (gen/time-limit 60))))
+                         (gen/time-limit duration))))
 
 (defn serf-test-rand-halves
- "Test with 10events per sec and nemesis partition-random-halves for 10 min"
-  [version]
+ "Test with 10events per sec and nemesis partition-random-halves"
+  [duration]
   (assoc tests/noop-test
          :name "Serf"
          :os debian/os
-         :db (db version)
+         :db (db)
          :client (client nil)
          :nemesis (nemesis/partition-random-halves)
          :generator (->> s
@@ -102,16 +102,16 @@
                                             {:type :info, :f :start}
                                             (gen/sleep 120)
                                             {:type :info, :f :stop}])))
-                         (gen/time-limit 600))))
+                         (gen/time-limit duration))))
 
 
 (defn serf-test-bridge
- "Test with 10events per sec and nemesis bridge and shuffle for 10 min"
-  [version]
+ "Test with 10events per sec and nemesis bridge and shuffle"
+  [duration]
   (assoc tests/noop-test
          :name "Serf"
          :os debian/os
-         :db (db version)
+         :db (db)
          :client (client nil)
          :nemesis (nemesis/partitioner (comp nemesis/bridge shuffle))
          :generator (->> s
@@ -121,4 +121,4 @@
                                             {:type :info, :f :start}
                                             (gen/sleep 120)
                                             {:type :info, :f :stop}])))
-                         (gen/time-limit 600))))
+                         (gen/time-limit duration))))
