@@ -1,4 +1,3 @@
-
 (ns serf.core
   (:require [clojure.tools.logging :refer :all]
             [clojure.java.io :as io]
@@ -28,7 +27,7 @@
     db/LogFiles
     (log-files [_ test node]
       ["/var/log/serf/serf.log"
-       "/var/log/serf/random.txt"
+       "/var/log/serf/serf.err"
        "/var/log/serf/purgelist.txt"])))
 
 (def printable-ascii (->> (concat (range 48 68)
@@ -50,8 +49,16 @@
                     (.toString s)))
 
 
-(defn s [_ _] {:type :invoke, :f :send, :value "purge"})
+(defn event-name
+[]
+(str "purge"))
 
+(defn query-name
+[]
+(str "metric"))
+
+(defn ev [_ _] {:type :invoke, :f :event, :value [(event-name) (rand-str (rand-int 100))]})
+(defn qu [_ _] {:type :invoke, :f :query, :value [(query-name) nil]})
 
 (defn client
   "A client for a single compare-and-set register"
@@ -66,59 +73,66 @@
     (invoke! [this test op]
       (timeout 5000 (assoc op :type :info, :error :timeout)
                (case (:f op)
-                 :send (do (send-command! c :event (:value op) (rand-str (rand-int 100)) false)
-                           (assoc op :type :ok)))))
+                 :event (let [[e-name payload] (:value op)]
+                   do (send-command! c :event e-name payload false)
+                   (assoc op :type :ok))
+                 :query (let [[q-name payload] (:value op)]
+                   do (send-command! c :query q-name payload nil)
+                   (assoc op :type :ok))
+                 )))
 
     (teardown! [_ test]
       (.close c))))
 
-
 (defn serf-test
- "Basic test with 10events per sec and no nemesis"
+ "Basic test with 10events per sec per node and no nemesis"
   [duration]
   (assoc tests/noop-test
          :name "Serf"
          :os debian/os
          :db (db)
          :client (client nil)
-         :generator (->> s
+         :generator (->> ev
                          (gen/stagger 1/10)
                          (gen/clients)
-                         (gen/time-limit duration))))
+                         (gen/time-limit duration))
+           ))
 
 (defn serf-test-rand-halves
- "Test with 10events per sec and nemesis partition-random-halves"
+ "Test with 10events per sec per node and nemesis partition-random-halves"
   [duration]
   (assoc tests/noop-test
-         :name "Serf"
+         :name "Serf-rand-halves"
          :os debian/os
          :db (db)
          :client (client nil)
          :nemesis (nemesis/partition-random-halves)
-         :generator (->> s
+         :generator (->> ev
                          (gen/stagger 1/10)
                          (gen/nemesis
                            (gen/seq (cycle [(gen/sleep 10)
                                             {:type :info, :f :start}
                                             (gen/sleep 120)
                                             {:type :info, :f :stop}])))
-                         (gen/time-limit duration))))
+                         (gen/time-limit duration))
+           ))
 
 
 (defn serf-test-bridge
- "Test with 10events per sec and nemesis bridge and shuffle"
+ "Test with 10events per sec per node and nemesis bridge and shuffle"
   [duration]
   (assoc tests/noop-test
-         :name "Serf"
+         :name "Serf-bridge"
          :os debian/os
          :db (db)
          :client (client nil)
          :nemesis (nemesis/partitioner (comp nemesis/bridge shuffle))
-         :generator (->> s
+         :generator (->> ev
                          (gen/stagger 1/10)
                          (gen/nemesis
                            (gen/seq (cycle [(gen/sleep 10)
                                             {:type :info, :f :start}
                                             (gen/sleep 120)
                                             {:type :info, :f :stop}])))
-                         (gen/time-limit duration))))
+                         (gen/time-limit duration))
+           ))
